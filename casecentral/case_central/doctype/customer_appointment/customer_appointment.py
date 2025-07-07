@@ -409,7 +409,9 @@ def get_events(start, end, filters=None):
 	data = frappe.db.sql(
 		"""
 		select
-		`tabCustomer Appointment`.name, concat(`tabCustomer Appointment`.customer, CHAR(13), `tabCustomer Appointment`.customer_name) as title,
+		`tabCustomer Appointment`.name,
+		`tabCustomer Appointment`.customer,
+		`tabCustomer Appointment`.customer_name,
 		`tabCustomer Appointment`.employee, `tabCustomer Appointment`.status,
 		`tabCustomer Appointment`.duration,
 		timestamp(`tabCustomer Appointment`.appointment_date, `tabCustomer Appointment`.appointment_time) as 'start',
@@ -428,6 +430,8 @@ def get_events(start, end, filters=None):
 	)
 
 	for item in data:
+		# Build the title in Python
+		item["title"] = f"{item['customer']}\n{item['customer_name']}"
 		item.end = item.start + datetime.timedelta(minutes=item.duration)
 
 	return data

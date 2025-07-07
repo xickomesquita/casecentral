@@ -24,21 +24,27 @@ def get_events(start, end, filters=None):
 	"""
 	from frappe.desk.calendar import get_event_conditions
 
-	conditions = get_event_conditions("Case", filters)
+	   conditions = get_event_conditions("Case", filters)
 
-	data = frappe.db.sql(
-		"""
-		select
-			name, concat(name, CHAR(13), registration_number) as title, status, next_hearing_date
-		from
-			`tabCase`
-		where status="InProgress"
-			and (next_hearing_date between %(start)s and %(end)s)
-			{conditions}
-		""".format(
-			conditions=conditions
-		),
-		{"start": start, "end": end},
-		as_dict=True
-	)
-	return data
+	   # Avoid SQL functions: fetch fields directly
+	   data = frappe.db.sql(
+			   """
+			   select
+					   name, registration_number, status, next_hearing_date
+			   from
+					   `tabCase`
+			   where status="InProgress"
+					   and (next_hearing_date between %(start)s and %(end)s)
+					   {conditions}
+			   """.format(
+					   conditions=conditions
+			   ),
+			   {"start": start, "end": end},
+			   as_dict=True
+	   )
+
+	   # Build the title in Python
+	   for row in data:
+			   row["title"] = f"{row['name']}\n{row['registration_number']}"
+
+	   return data

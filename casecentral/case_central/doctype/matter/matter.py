@@ -32,44 +32,27 @@ class Matter(Document):
 			else:
 				self.status = "Completed"
 		else:
-			total = frappe.db.count("Task", dict(matter=self.name))
-			cancelled = frappe.db.sql(
-					"""select count(name) from tabTask where
-					matter=%s and status in ('Cancelled')""",
-					self.name,
-				)[0][0]
-			
+			# Fetch all tasks for this matter
+			tasks = frappe.get_all("Task", filters={"matter": self.name}, fields=["name", "status"])
+			total = len(tasks)
+			status_counts = {"Cancelled": 0, "Open": 0, "Completed": 0, "Pending Review": 0}
+			for t in tasks:
+				if t["status"] in status_counts:
+					status_counts[t["status"]] += 1
+
 			if not total:
 				self.status = "Open"
-			elif flt(cancelled) == total:
+			elif status_counts["Cancelled"] == total:
 				self.status = "Cancelled"
+			elif status_counts["Open"] + status_counts["Cancelled"] == total:
+				self.status = "Open"
+			elif status_counts["Completed"] + status_counts["Cancelled"] == total:
+				self.status = "Completed"
+			elif status_counts["Pending Review"] + status_counts["Cancelled"] == total:
+				self.status = "Pending"
 			else:
-				open = frappe.db.sql(
-					"""select count(name) from tabTask where
-					matter=%s and status in ('Open', 'Cancelled')""",
-					self.name,
-				)[0][0]
-				if flt(open) == total:
-					self.status = "Open"
-				else:
-					self.status = "Working"
-				
-				completed = frappe.db.sql(
-					"""select count(name) from tabTask where
-					matter=%s and status in ('Completed', 'Cancelled')""",
-					self.name,
-				)[0][0]
-				if flt(completed) == total:
-					self.status = "Completed"
-				else:
-					pending = frappe.db.sql(
-						"""select count(name) from tabTask where
-						matter=%s and status in ('Pending Review', 'Cancelled')""",
-						self.name,
-					)[0][0]
-					if flt(pending) == total:
-						self.status = "Pending"
-		
+				self.status = "Working"
+
 		self.db_update()
 		self.reload()
 
