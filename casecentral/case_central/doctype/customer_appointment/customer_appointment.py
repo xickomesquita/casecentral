@@ -47,37 +47,37 @@ class CustomerAppointment(Document):
 			self.status = "Scheduled"
 
 	def validate_overlaps(self):
-		end_time = datetime.datetime.combine(
-			getdate(self.appointment_date), get_time(self.appointment_time)
-		) + datetime.timedelta(minutes=flt(self.duration))
+		# Calculate start and end datetime for this appointment
+		appt_date = getdate(self.appointment_date)
+		appt_start = datetime.datetime.combine(appt_date, get_time(self.appointment_time))
+		appt_end = appt_start + datetime.timedelta(minutes=flt(self.duration))
 
-		# all appointments for both customer and employee overlapping the duration of this appointment
-		overlapping_appointments = frappe.db.sql(
+		# Fetch all possible overlapping appointments for the same date, employee or customer
+		possible_overlaps = frappe.db.sql(
 			"""
-			SELECT
-				name, employee, customer, appointment_time, duration, meeting_room
-			FROM
-				`tabCustomer Appointment`
-			WHERE
-				appointment_date=%(appointment_date)s AND name!=%(name)s AND status NOT IN ("Closed", "Cancelled") AND
-				(employee=%(employee)s OR customer=%(customer)s) AND
-				((appointment_time<%(appointment_time)s AND appointment_time + INTERVAL duration MINUTE>%(appointment_time)s) OR
-				(appointment_time>%(appointment_time)s AND appointment_time<%(end_time)s) OR
-				(appointment_time=%(appointment_time)s))
+			SELECT name, employee, customer, appointment_time, duration, meeting_room
+			FROM `tabCustomer Appointment`
+			WHERE appointment_date=%(appointment_date)s
+				AND name!=%(name)s
+				AND status NOT IN ("Closed", "Cancelled")
+				AND (employee=%(employee)s OR customer=%(customer)s)
 			""",
 			{
 				"appointment_date": self.appointment_date,
 				"name": self.name,
 				"employee": self.employee,
 				"customer": self.customer,
-				"appointment_time": self.appointment_time,
-				"end_time": end_time.time(),
 			},
 			as_dict=True,
 		)
 
-		if not overlapping_appointments:
-			return  # No overlaps, nothing to validate!
+		for appt in possible_overlaps:
+			other_start = datetime.datetime.combine(appt_date, get_time(appt["appointment_time"]))
+			other_end = other_start + datetime.timedelta(minutes=flt(appt["duration"]))
+			# Check for overlap
+			if (appt_start < other_end and appt_end > other_start):
+				raise OverlapError(_("Appointment overlaps with another appointment ({0}) for employee or customer.").format(appt["name"]))
+		# No overlaps, nothing to validate!
 
 		if self.meeting_room:  # validate meeting room capacity if overlap enabled
 			allow_overlap, meeting_room_capacity = frappe.get_value(
@@ -371,10 +371,10 @@ def update_status(appointment_id, status):
 
 @frappe.whitelist()
 def make_timesheet(source_name, target_doc=None):
-    # Validate if timesheet already exists
+	# Validate if timesheet already exists
 	if frappe.db.exists("Timesheet", {"appointment": source_name, "status": ["!=", "Cancelled"]}):
 		frappe.throw(_("The timesheet already exists for this customer appointment"))
-        
+		
 	doc = get_mapped_doc(
 		"Customer Appointment",
 		source_name,
